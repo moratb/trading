@@ -3,7 +3,7 @@ api_secret = 'test'
 mail_pass = 'test'
 mail_host = 'imap.gmail.com'
 mail_login = 'test'
-telegram_bot_token = '923232711:AAFocTW3jssyRDh9CwQG4NMSTSOzeqTpoU8'
+telegram_bot_token = 'test'
 telegram_bot_chatID = 'test'
 
 
