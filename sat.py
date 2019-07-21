@@ -8,6 +8,7 @@ import imaplib
 import email
 import numpy as np
 import time
+import datetime as dt
 from binance.client import Client
 client = Client(api_key, api_secret)
 
@@ -109,7 +110,7 @@ while True:
         print('Deleting email')
         connector.store(emailid, '+FLAGS', '\\Deleted')
         connector.expunge()
-    print('done')
+    print('done ', dt.datetime.now())
     connector.close()
     connector.logout()
 
