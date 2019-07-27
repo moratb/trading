@@ -155,11 +155,11 @@ while True:
         elif 'TP1' in mail['Subject']:
             execute_sell(mail['Subject'].split('_')[2],
                         'USDT',
-                        0.20)
+                        0.30)
         elif 'TP2' in mail['Subject']:
             execute_sell(mail['Subject'].split('_')[2],
                         'USDT',
-                        0.68)
+                        0.5)
         elif 'TP3' in mail['Subject']:
             execute_sell(mail['Subject'].split('_')[2],
                         'USDT',
