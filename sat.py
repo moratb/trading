@@ -172,8 +172,8 @@ while True:
         else:
             print('Unknown email', flush=True)
         print('Deleting email', flush=True)
-        connector.store(emailid, '+FLAGS', '\\Deleted')
-        connector.expunge()
+        connector.store(emailid, '+X-GM-LABELS', '\\Trash')
+    connector.expunge()
     print('done ', dt.datetime.now(), flush=True)
 
     connector.close()
