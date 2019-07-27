@@ -64,9 +64,9 @@ def execute_buy(what_to_buy, what_for, share):
         print('buy order', '\n', order_buy['symbol'], order_buy['fills'][0],  flush=True)
         tg_tmp = telegram_bot_sendtext(telegram_bot_token,
                                        telegram_bot_chatID,
-                                       'buy order executed :)) ' +
-                                       str(order_buy['symbol']) + ' '+
-                                       str(order_buy['fills'][0]) + ' '+
+                                       'buy order executed :)) ' +\
+                                       str(order_buy['symbol']) + ' '+\
+                                       str(order_buy['fills'][0]) + ' '+\
                                        str(float(order_buy['fills'][0]['price'])*float(order_buy['fills'][0]['qty'])))
     except:
         print('error ... probably not enough money', flush=True)
@@ -108,9 +108,9 @@ def execute_sell(what_to_sell, what_for, share):
         print('sell order', '\n', order_sell['symbol'], order_sell['fills'][0], flush=True)
         tg_tmp = telegram_bot_sendtext(telegram_bot_token,
                                        telegram_bot_chatID,
-                                       'sell order executed :)) ' +
-                                       str(order_sell['symbol']) + ' '+
-                                       str(order_sell['fills'][0]) + ' '+
+                                       'sell order executed :)) ' +\
+                                       str(order_sell['symbol']) + ' '+\
+                                       str(order_sell['fills'][0]) + ' '+\
                                        str(float(order_sell['fills'][0]['price'])*float(order_sell['fills'][0]['qty'])))
     except:
         print('error ... probably not enough money', flush=True)
