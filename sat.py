@@ -11,6 +11,7 @@ to_trade = ['BTC','ETH','XRP','EOS','BSV','ADA']
 
 
 
+
 import requests
 import imaplib
 import email
@@ -61,12 +62,12 @@ def execute_buy(what_to_buy, what_for, share):
                                         type=Client.ORDER_TYPE_MARKET,
                                         newOrderRespType='FULL',
                                         quantity=buy_func(what_to_buy, what_for, share))
-        print('buy order', '\n', order_buy['symbol'], order_buy['fills'][0],  flush=True)
+        print('buy order', '\n', order_buy['symbol'], order_buy['fills'],  flush=True)
         tg_tmp = telegram_bot_sendtext(telegram_bot_token,
                                        telegram_bot_chatID,
                                        'buy order executed :)) ' +\
                                        str(order_buy['symbol']) + ' '+\
-                                       str(order_buy['fills'][0]) + ' '+\
+                                       str(order_buy['fills']) + ' '+\
                                        str(float(order_buy['fills'][0]['price'])*float(order_buy['fills'][0]['qty'])))
     except:
         print('error ... probably not enough money', flush=True)
@@ -105,12 +106,12 @@ def execute_sell(what_to_sell, what_for, share):
                                          type=Client.ORDER_TYPE_MARKET,
                                          newOrderRespType='FULL',
                                          quantity=sell_func(what_to_sell, what_for, share))
-        print('sell order', '\n', order_sell['symbol'], order_sell['fills'][0], flush=True)
+        print('sell order', '\n', order_sell['symbol'], order_sell['fills'], flush=True)
         tg_tmp = telegram_bot_sendtext(telegram_bot_token,
                                        telegram_bot_chatID,
                                        'sell order executed :)) ' +\
                                        str(order_sell['symbol']) + ' '+\
-                                       str(order_sell['fills'][0]) + ' '+\
+                                       str(order_sell['fills']) + ' '+\
                                        str(float(order_sell['fills'][0]['price'])*float(order_sell['fills'][0]['qty'])))
     except:
         print('error ... probably not enough money', flush=True)
