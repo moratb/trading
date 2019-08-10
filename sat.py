@@ -195,7 +195,7 @@ class TakeProfitsTracker():
                 print('TAKE_PRIFIT_SIGNAL', price_atm, i, tp_signaled, signal_share_sell, 'TO_TRADE: ',signal_actual_sell)
                 return [i, signal_actual_sell]
                 break
-        print ( self.prices_buy, '\n',self.amount_buy, '\n', self.prices_marks)
+        print ( 'prices:',self.prices_buy, '\namount:',self.amount_buy, '\nTP_marks:', self.prices_marks)
 
 
 
