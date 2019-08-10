@@ -197,7 +197,7 @@ class TakeProfitsTracker():
                 signal_share_sell = round(sum([self.share_to_trade[j] for j in tp_signaled]),3)
                 signal_actual_sell = signal_share_sell*self.amount_buy[i]
                 print('TAKE_PRIFIT_SIGNAL', price_atm, i, tp_signaled, signal_share_sell, 'TO_TRADE: ',signal_actual_sell)
-                return [i, signal_actual_sell]
+                return {'ticker':i, 'val':signal_actual_sell}
                 break
         print ( 'prices:',self.prices_buy, '\namount:',self.amount_buy, '\nTP_marks:', self.prices_marks)
 
