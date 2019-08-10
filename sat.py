@@ -38,7 +38,11 @@ def smart_split(to_trade, mode = 'und'):
     balance_benchmark = sum(balances_actual['usd'])/len(to_trade)*0.05
     balances_actual['in_action'] = balances_actual['usd']>balance_benchmark
     cur_in_action = balances_actual[(balances_actual['in_action']) & (balances_actual['symbol']!='USDT')]
-    use_next_deal = balances_actual[(balances_actual['symbol']=='USDT')]['free'].sum()/(len(to_trade)-2 - len(cur_in_action))
+    cur_left = (len(to_trade)-2 - len(cur_in_action))
+    if cur_left>0:
+        use_next_deal = balances_actual[(balances_actual['symbol']=='USDT')]['free'].sum()/cur_left
+    else:
+        use_next_deal=0
     if mode =='und':
         return use_next_deal
     else:
