@@ -179,9 +179,12 @@ class TakeProfitsTracker():
         self.prices_marks[ticker] = {i:float(price_buy) * (self.price_changes[i]+1) for i in self.price_changes}
 
     def cur_sold_from_signal(self, ticker):
-        del self.amount_buy[ticker]
-        del self.prices_buy[ticker]
-        del self.prices_marks[ticker]
+        if ticker in self.prices_marks.keys():
+            del self.amount_buy[ticker]
+            del self.prices_buy[ticker]
+            del self.prices_marks[ticker]
+        else:
+            print('No_Ticker_In_Tracker', flush=True)
 
     def check_prices(self):
         for i in list(self.prices_marks.keys()):
