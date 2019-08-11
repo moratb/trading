@@ -211,7 +211,7 @@ take_profit_tracker = TakeProfitsTracker(take_profits)
 
 ## ОСНОВНОЙ ЦИКЛ
 while True:
-    time.sleep(10)
+    time.sleep(30)
     ## ПРОВЕРЯЕМ ТЕЙКПРОФИТЫ
     res = take_profit_tracker.check_prices()
     if res!=None:
