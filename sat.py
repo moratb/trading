@@ -179,12 +179,9 @@ class TakeProfitsTracker():
         self.prices_marks[ticker] = {i:float(price_buy) * (self.price_changes[i]+1) for i in self.price_changes}
 
     def cur_sold_from_signal(self, ticker):
-        if ticker in self.prices_marks.keys():
-            del self.amount_buy[ticker]
-            del self.prices_buy[ticker]
-            del self.prices_marks[ticker]
-        else:
-            print('No_Ticker_In_Tracker', flush=True)
+        del self.amount_buy[ticker]
+        del self.prices_buy[ticker]
+        del self.prices_marks[ticker]
 
     def check_prices(self):
         for i in list(self.prices_marks.keys()):
@@ -240,12 +237,18 @@ while True:
         if 'Buy' in mail['Subject']:
             currency = mail['Subject'].split('_')[2]
             tmp = execute_buy(what_to_buy=currency, what_for='USDT', share=1)
-            take_profit_tracker.cur_purchased_from_signal(currency+'USDT', tmp['price'], tmp['qty'])
+            try:
+                take_profit_tracker.cur_purchased_from_signal(currency+'USDT', tmp['price'], tmp['qty'])
+            except:
+                print('Tracker_ERROR: price_and_amount_not_passed')
 
         elif 'Sell' in mail['Subject']:
             currency = mail['Subject'].split('_')[2]
             execute_sell(what_to_sell=currency, what_for='USDT', share=1)
-            take_profit_tracker.cur_sold_from_signal(currency+'USDT')
+            try:
+                take_profit_tracker.cur_sold_from_signal(currency+'USDT')
+            except:
+                print('Tracker_ERROR: currency_doesnt_exist')
 
         else:
             print('Unknown email', flush=True)
