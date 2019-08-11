@@ -15,6 +15,7 @@ take_profits = {
                }
 
 
+
 import requests
 import imaplib
 import email
@@ -227,7 +228,8 @@ while True:
     resp, items = connector.search(None, "ALL")
 
     for emailid in items[0].split():
-        currency = ''
+        currency = None
+        tmp = None
         resp, data = connector.fetch(emailid, '(RFC822)')
         mail = email.message_from_bytes(data[0][1])
         print(mail['Subject'], mail['Date'], flush=True)
