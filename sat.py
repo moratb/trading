@@ -15,7 +15,6 @@ take_profits = {
                }
 
 
-
 import requests
 import imaplib
 import email
@@ -153,26 +152,45 @@ def telegram_bot_sendtext(bot_token, bot_chatID ,bot_message):
 ## Объект трекающий тейкпрофиты
 class TakeProfitsTracker():
     def __init__(self, take_profits):
-
+        
         self.tp_dict = take_profits
         self.price_changes = {i:take_profits[i][0] for i in take_profits}
         self.share_to_trade = {i:take_profits[i][1] for i in take_profits}
-
+        
         cur_in_action = smart_split(to_trade, mode = 'cia')
-
+                
         self.amount_buy = {}
         self.prices_buy = {}
         self.prices_marks = {}
-
+        
         for i in cur_in_action['symbol']:
+            ## GET LATEST SYMBOL DATA
             newi = i +'USDT'
-            tmp = pd.DataFrame(client.get_my_trades(symbol = newi, limit=20)
-                            ).sort_values(by='time',ascending=False
-                                     ).query('isBuyer==True'
-                                            ).drop_duplicates(subset='symbol')['price']
-            self.amount_buy[newi] = cur_in_action[cur_in_action['symbol']==i]['free'].sum()
-            self.prices_buy[newi] = float(tmp)
-            self.prices_marks[newi] = {j:float(tmp) * (self.price_changes[j]+1) for j in self.price_changes}
+            latest_symbol_data = pd.DataFrame(client.get_my_trades(symbol = newi, limit=50)
+                              ).query('isBuyer==True')
+            latest_symbol_data[['qty','quoteQty','time']] = latest_symbol_data[['qty','quoteQty','time']].apply(pd.to_numeric, errors='coerce')
+            latest_symbol_data = latest_symbol_data.groupby(['time','orderId','symbol']
+                                                           ).agg({'quoteQty':'sum', 'qty':'sum'}
+                                                                ).reset_index()
+            latest_symbol_data['price'] = latest_symbol_data['quoteQty']/latest_symbol_data['qty']
+            latest_symbol_data = latest_symbol_data.sort_values(by='time',ascending=False
+                                                               ).drop_duplicates(subset='symbol')
+
+            self.amount_buy[newi] = float(latest_symbol_data['qty'])
+            self.prices_buy[newi] = float(latest_symbol_data['price'])
+
+            ## GET THE LIST OF PROFITS TAKEN            
+            share_left = cur_in_action[cur_in_action['symbol']==i]['free'].sum()/self.amount_buy[newi]
+            changing_share_sum = 1
+            profits_taken = []
+            for j,i in take_profits.items():
+                changing_share_sum-=i[1]
+            
+                if changing_share_sum<share_left:
+                    break
+                profits_taken+=[j]
+
+            self.prices_marks[newi] = {j:float(latest_symbol_data['price']) * (self.price_changes[j]+1) for j in self.price_changes if j not in profits_taken}
 
     def cur_purchased_from_signal(self, ticker, price_buy, amount):
         self.amount_buy[ticker] = amount
