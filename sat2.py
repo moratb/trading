@@ -39,8 +39,8 @@ def smart_split(what_to_buy, mode = 'und'):
         use_next_deal=0
     if mode =='und':
         return use_next_deal
-    else:
-        return cur_in_action
+    elif mode =='do':
+        return (balances_actual[balances_actual['symbol']==what_to_buy]['usd']/use_next_deal)*100
 
 
 def buy_func(what_to_buy, what_for, share):
@@ -179,18 +179,56 @@ symbols = re.compile('[,.\\\/\%\$0-9]')
 numbers = re.compile('\d+(?=\%)')
 
 
-Position_dict = {'продать не шортить':'Long_Close',
- 'продать половину':'Long_Close',
- 'закрыть покупку':'Long_Close',
- 'закрыть покупкуlong':'Long_Close',
- 'открыть продажуshort на ':'Short_Open',
- 'закрыть продажуshort':'Short_Close',
- 'откупить шорт':'Short_Close',
- 'продажаshort':'Short_Open',
- 'покупка (закрыть short взять long на )':'Long_Open',
- 'покупкаlong':'Long_Open',
- 'покупкаlong на ':'Long_Open',
- 'покупкаlong на ':'Long_Open'}
+Position_dict = {
+'longна':'Long_Open',
+'откупитьshortlongна':'Long_Open',
+'long(закрытьshortвзятьlongна)':'Long_Open',
+'long(закрытьshortоткрытьlong)':'Long_Open',
+'закрытьshortоткрытьlongна':'Long_Open',
+'открытьlongна':'Long_Open',
+'увеличитьlongдо':'Long_Open', ### Ну эт пиздец
+'докупитьдо(long)':'Long_Open', ### Ну эт пиздец
+'long':'Long_Open',
+'частичнаяlongдо':'Long_Open', ### Ну эт пиздец
+'частичнаяlongна':'Long_Open',
+'long(закрытьshortвзятьlong)':'Long_Open',
+'кимеющейсяпозицииlongдокупить':'Long_Open',
+'закрытьlong':'Long_Close',
+'закрытьlongоткрытьshortна':'Long_Close',
+'открытьshortна(закрытьlong)':'Long_Close',
+'short(закрытьlongоткрытьshort)':'Long_Close',
+'short(закрытьостатокlongаоткрытьshort)':'Long_Close',
+'продатьполовину':'Long_Close',
+'сократитьlongдо':'Long_Close',   ### Ну эт пиздец
+'cократитьlongна':'Long_Close',
+'cократитьнаlong':'Long_Close',
+'продатьнеshortить':'Long_Close',
+'longзакрытьнеshortить':'Long_Close',
+'продатьостатокнеshortить':'Long_Close',
+'продатьостаток':'Long_Close',
+'short(закрытьlongоткрытьshort':'Long_Close',
+'short(закрытьlongвзятьshortна)':'Long_Close',
+'short(закрытьlongоткрытьshort)на':'Long_Close',
+'shortна':'Short_Open',
+'открытьshortна':'Short_Open',
+'short(открытьshort)':'Short_Open',
+'увеличитьshortдо':'Short_Open', ### Ну эт пиздец
+'увеличитьshortна':'Short_Open',
+'short':'Short_Open',
+'восстановитьshortдо':'Short_Open', ### Ну эт пиздец
+'откупитьполовину':'Short_Close',
+'закрытьshort':'Short_Close',
+'сократитьshortнаполовинуоставить':'Short_Close',
+'сократитьshortна':'Short_Close',
+'закрытьshortнепокупать':'Short_Close',
+'shortзакрытьнепокупать':'Short_Close',
+'откупитьshort':'Short_Close',
+'cократитьshortна': 'Short_Close',
+'откупитьshortнепокупать': 'Short_Close',
+'откупитьshortнеlongовать': 'Short_Close',
+'cократитьнаshort': 'Short_Close'
+ }
+substitutions = {' ':'', 'покупк[ауи]|лонг': 'long', 'продаж[ау]|шорт': 'short', 'longlong':'long','shortshort':'short'}
 
 ## Main loop
 @telegram_client.on(events.NewMessage)
@@ -198,37 +236,48 @@ async def normal_handler(event):
     print(event.message)
     print(event.message.to_dict()['message'])
     new_message = event.message.to_dict()['message']
-    if 'hello' in new_message:
-        await event.reply('Kek')
-    if 'USD' in new_message:
+    if 'верк' in new_message:
+        pass
+    elif 'USD' in new_message:
         res =  pd.DataFrame({'cur':[],
                              'value':[],
                              'test':[],
                              'action':[]})
         for signal_id in new_message.split('\n\n'):
             res = res.append({'cur':re.search(cur_search, signal_id).group(),
-                              'value':''.join(re.findall(numbers, signal_id)) or '100',
-                              'test':re.search(action_search, signal_id).group(),
-                              'action':re.sub(symbols,'',re.search(action_search, signal_id).group()
-                                    ).replace('  ',' ').lower()},ignore_index=True)
+                    'value':''.join(re.findall(numbers, signal_id)) or '100',
+                    'test':re.search(action_search, signal_id).group(),
+                    'action':re.sub(symbols,'',re.search(action_search, signal_id).group()).lower()},ignore_index=True)
+            for old,new in substitutions.items():
+                res['action'] = res['action'].str.replace(old,new)
             res['true_action'] = res['action'].replace(Position_dict)
             res.loc[res['test'].str.contains('полов'),'value']='50'
             res.loc[res['test'].str.contains('четверть'),'value']='25'
+            res.loc[res['test'].str.contains('Закрыть покупку'),'value']='100'
         print(res)
-        for i in range(len(res)):
-            if res.loc[i]['true_action'] == 'Long_Open':
-                print('WILL BUY', res.loc[i]['cur'])
-                print(buy_func(res.loc[i]['cur'],
-                               'USDT',
-                               int(res.loc[i]['value'])/100))
-            elif res.loc[i]['true_action'] == 'Long_Close':
-                print('WILL SELL', res.loc[i]['cur'])
-                print(sell_func(res.loc[i]['cur'],
-                               'USDT',
-                               int(res.loc[i]['value'])/100))
+        for i, row in res.iterrows():
+            true_action = res.loc[i]['true_action']
+            action = res.loc[i]['action']
+            cur = res.loc[i]['cur']
+            val = int(res.loc[i]['value'])
+            if true_action == 'Long_Open':
+                if 'до' in action:
+                    val = val - int(round(smart_split(cur,'do')))
+                print('WILL BUY', cur, val)
+                print(buy_func(cur, 'USDT', int(val)/100))
+            elif true_action == 'Long_Close':
+                if 'до' in action:
+                    val = int(round(smart_split(cur,'do'))) - val
+                print('WILL SELL', cur, val)
+                print(sell_func(cur, 'USDT', val/100))
+            else:
+                pass
 
 
 telegram_client.run_until_disconnected()
+
+
+
 
 
 
@@ -245,4 +294,10 @@ async def main_logout():
 
 
 telegram_client.loop.run_until_complete(main_logout())
+
+
+
+
+
+
 
