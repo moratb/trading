@@ -140,7 +140,7 @@ def telegram_bot_sendtext(bot_token, bot_chatID ,bot_message):
 def get_last_messages(avail_time = 120):
     while True:
         time.sleep(15)
-        tmp = requests.get('https://api.telegram.org/bot'+ bot_token + '/getUpdates?limit=1&offset=-1').json()
+        tmp = requests.get('https://api.telegram.org/bot'+ telegram_bot_token + '/getUpdates?limit=1&offset=-1').json()
         try:
             code_time = tmp['result'][0]['message']['date']
         except:
@@ -154,7 +154,7 @@ def get_last_messages(avail_time = 120):
             return code[0]
         else:
             print('code_is_old')
-            requests.get('https://api.telegram.org/bot'+ bot_token + '/sendMessage?chat_id='+ bot_chatID +'&text=waiting_for_code').json()
+            requests.get('https://api.telegram.org/bot'+ telegram_bot_token + '/sendMessage?chat_id='+ telegram_bot_chatID +'&text=waiting_for_code').json()
 
 
 async def auth_tg():
@@ -232,9 +232,6 @@ telegram_client.run_until_disconnected()
 
 
 
-
-
-
 ##  Напечатать существующие диалоги
 #for dialog in telegram_client.iter_dialogs():
 #    print(dialog.name, 'has ID', dialog.id)
@@ -248,8 +245,4 @@ async def main_logout():
 
 
 telegram_client.loop.run_until_complete(main_logout())
-
-
-
-
 
