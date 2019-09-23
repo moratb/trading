@@ -2,10 +2,10 @@ api_key = 'test'
 api_secret = 'test'
 telegram_bot_token = 'test'
 telegram_bot_chatID = 'test'
-telegram_api_id = test
+telegram_api_id = 'test'
 telegram_api_hash = 'test'
-telegram_phone_number = test
-to_trade = test
+telegram_phone_number = 'test'
+to_trade = 'test
 
 
 
@@ -34,7 +34,7 @@ def smart_split(what_to_buy, mode = 'und'):
     cur_in_action = balances_actual[(balances_actual['in_action']) & (balances_actual['symbol']!='USDT')]
     cur_left = (len(to_trade)-2 - len(cur_in_action))
     if what_to_buy in cur_in_action['symbol'].unique() or cur_left>0:
-        use_next_deal = (balances_actual['usd'].sum()-5)/(len(to_trade)-2)
+        use_next_deal = (balances_actual['usd'].sum()-500)/(len(to_trade)-2)
     else:
         use_next_deal=0
     if mode =='und':
@@ -77,7 +77,6 @@ def execute_buy(what_to_buy, what_for, share):
                                        str(order_buy['symbol']) + ' '+\
                                        str(order_buy['fills']) + ' '+\
                                        str(qty_purched*price_purched))
-        return {'price':price_purched,'qty': qty_purched}
     except:
         print('error ... probably not enough money', flush=True)
         tg_tmp = telegram_bot_sendtext(telegram_bot_token,
@@ -230,15 +229,22 @@ Position_dict = {
  }
 substitutions = {' ':'', 'покупк[ауи]|лонг': 'long', 'продаж[ау]|шорт': 'short', 'longlong':'long','shortshort':'short'}
 
+
+##  Напечатать существующие диалоги
+#for dialog in telegram_client.iter_dialogs():
+#    print(dialog.name, 'has ID', dialog.id)
+
 ## Main loop
-@telegram_client.on(events.NewMessage)
+@telegram_client.on(events.NewMessage(incoming=True, chats=('chat_id1','chat_id2')))
 async def normal_handler(event):
-    print(event.message)
-    print(event.message.to_dict()['message'])
+    print(event.message,flush=True)
+    print(event.message.to_dict()['message'], flush=True)
     new_message = event.message.to_dict()['message']
-    if 'верк' in new_message:
+    if 'alive_test' in new_message:
+        await event.reply('kek')
+    elif 'верк' in new_message:
         pass
-    elif 'USD' in new_message:
+    elif True in [i in new_message for i in to_trade]:
         res =  pd.DataFrame({'cur':[],
                              'value':[],
                              'test':[],
@@ -254,7 +260,7 @@ async def normal_handler(event):
             res.loc[res['test'].str.contains('полов'),'value']='50'
             res.loc[res['test'].str.contains('четверть'),'value']='25'
             res.loc[res['test'].str.contains('Закрыть покупку'),'value']='100'
-        print(res)
+        print(res,  flush=True)
         for i, row in res.iterrows():
             true_action = res.loc[i]['true_action']
             action = res.loc[i]['action']
@@ -263,27 +269,19 @@ async def normal_handler(event):
             if true_action == 'Long_Open':
                 if 'до' in action:
                     val = val - int(round(smart_split(cur,'do')))
-                print('WILL BUY', cur, val)
-                print(buy_func(cur, 'USDT', int(val)/100))
+                print('WILL BUY', cur, val, flush=True)
+                execute_buy(what_to_buy=cur, what_for='USDT', share=val/100)
             elif true_action == 'Long_Close':
                 if 'до' in action:
                     val = int(round(smart_split(cur,'do'))) - val
-                print('WILL SELL', cur, val)
-                print(sell_func(cur, 'USDT', val/100))
+                print('WILL SELL', cur, val, flush=True)
+                execute_sell(what_to_sell=cur, what_for='USDT', share=val/100)
             else:
                 pass
 
 
 telegram_client.run_until_disconnected()
 
-
-
-
-
-
-##  Напечатать существующие диалоги
-#for dialog in telegram_client.iter_dialogs():
-#    print(dialog.name, 'has ID', dialog.id)
 
 
 
@@ -294,6 +292,10 @@ async def main_logout():
 
 
 telegram_client.loop.run_until_complete(main_logout())
+
+
+
+
 
 
 
