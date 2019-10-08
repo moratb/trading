@@ -5,13 +5,14 @@ mail_host = 'imap.gmail.com'
 mail_login = 'test'
 telegram_bot_token = 'test'
 telegram_bot_chatID = 'test'
-to_trade = ['BTC','ETH','XRP','EOS','BSV','ADA']
+to_trade = ['BTC','ETH','XRP','EOS','LTC','ADA']
+TO_TRADE = 6
 take_profits = {
-                 'TP1':[0.045, 0.12],
-                 'TP2':[0.095, 0.22],
-                 'TP3':[0.135, 0.32],
-                 'TP4':[0.175, 0.22],
-                 'TP5':[0.225, 0.12]
+                 'TP1':[0.045, 0.20],
+                 'TP2':[0.095, 0.20],
+                 'TP3':[0.135, 0.20],
+                 'TP4':[0.175, 0.20],
+                 'TP5':[0.225, 0.20]
                }
 
 
@@ -26,121 +27,92 @@ from binance.client import Client
 client = Client(api_key, api_secret)
 
 
-def smart_split(to_trade, mode = 'und'):
-    balances_full = pd.DataFrame(client.get_account()['balances']).rename(columns={'asset':'symbol'})
-    balances_full['free'] = balances_full['free'].astype(float)
+
+
+def smart_split(cur='BTC' ,mode = 'use_next_deal'):
+    balances_full = pd.DataFrame(client.get_margin_account()['userAssets']).rename(columns={'asset':'symbol'})
+    balances_full['netAsset'] = balances_full['netAsset'].astype(float)
     prices = pd.DataFrame(client.get_symbol_ticker())
     prices['symbol'] = prices['symbol'].str.replace('USDT','')
-    balances_actual = balances_full[balances_full['free']>0]
+    balances_actual = balances_full[balances_full['netAsset']!=0]
     balances_actual = pd.merge(balances_actual, prices , on='symbol', how='left').fillna(1)
     balances_actual['price'] = balances_actual['price'].astype(float)
-    balances_actual['usd'] = balances_actual['price']*balances_actual['free']
-    balance_benchmark = sum(balances_actual['usd'])/len(to_trade)*0.05
-    balances_actual['in_action'] = balances_actual['usd']>balance_benchmark
+    balances_actual['usd'] = balances_actual['price']*balances_actual['netAsset']
+    balances_actual['usd_true'] = np.where(balances_actual['usd']<0, balances_actual['usd']*2, balances_actual['usd'])
+    balances_actual['position'] = np.where(balances_actual['usd']<0, 'short', 'long')
+    balance_benchmark = sum(balances_actual['usd'])/TO_TRADE*0.05
+    balances_actual['in_action'] = abs(balances_actual['usd'])>balance_benchmark
     cur_in_action = balances_actual[(balances_actual['in_action']) & (balances_actual['symbol']!='USDT')]
-    cur_left = (len(to_trade)-2 - len(cur_in_action))
-    if cur_left>0:
-        use_next_deal = balances_actual[(balances_actual['symbol']=='USDT')]['free'].sum()/cur_left
-    else:
-        use_next_deal=0
-    if mode =='und':
+
+    cur_left = (TO_TRADE - len(cur_in_action))
+    use_next_deal = balances_actual[(balances_actual['usd_true']<0) | (balances_actual['symbol']=='USDT')]['usd_true'].sum()-100
+    use_next_deal = use_next_deal/cur_left if (cur_left and cur not in list(cur_in_action['symbol'])) else 0
+
+    if mode =='use_next_deal':
         return use_next_deal
-    else:
+    elif mode == 'cur_in_action':
         return cur_in_action
 
 
-def buy_func(what_to_buy, what_for, share):
-    ticker = what_to_buy + what_for
+def get_order_amount(deal_type , cur, share, val):
+    ticker = cur + 'USDT'
     ticker_info = client.get_symbol_info(symbol=ticker)
     price_atm = client.get_symbol_ticker(symbol=ticker)
     min_notional = {i['filterType']: i['minNotional'] for i in ticker_info['filters'] if i['filterType'] == 'MIN_NOTIONAL'}
+    min_lot_size = float({i['filterType']: i['minQty'] for i in ticker_info['filters'] if i['filterType'] == 'LOT_SIZE'}['LOT_SIZE'])
+    min_amount = float(min_notional['MIN_NOTIONAL'])/float(price_atm['price'])
 
-    max_amount_to_buy = np.format_float_positional((smart_split(to_trade)/float(price_atm['price']))*share)
-    min_amount_to_buy = np.format_float_positional(float(min_notional['MIN_NOTIONAL']) / float(price_atm['price']))
+    if deal_type == 'close':
+        margin_assets = pd.DataFrame(client.get_margin_account()['userAssets'])
+        margin_assets.iloc[:,1:] = margin_assets.iloc[:,1:].astype(float)
+        margin_assets['netAsset_noInterest'] = -margin_assets['borrowed']+margin_assets['free']
 
-    if float(max_amount_to_buy) > float(min_amount_to_buy):
-        min_lot_size = {i['filterType']: i['minQty'] for i in ticker_info['filters'] if i['filterType'] == 'LOT_SIZE'}
-        min_lot_size = np.format_float_positional(float(min_lot_size['LOT_SIZE']))
-        final_amount_to_buy = str(max_amount_to_buy)[0:len(min_lot_size.split('.')[1]) +
-                                                       len(str(max_amount_to_buy).split('.')[0]) + 1]
-        return final_amount_to_buy
+        balance_atm = margin_assets.loc[margin_assets['asset']==cur]['netAsset_noInterest'].values[0]*share
+        interest = margin_assets.loc[margin_assets['asset']==cur]['interest'].values[0]
+        balance_atm = balance_atm - interest
+
+        balance_atm = balance_atm - np.sign(balance_atm)*balance_atm*0.001 - float(min_lot_size) ## added comission for shorts
+        max_amount = val or abs(balance_atm)
+    elif deal_type == 'open':
+        max_amount = val or (smart_split(cur=cur, mode = 'use_next_deal')/float(price_atm['price']))*share
+
+
+    if max_amount > min_amount:
+        min_lot_size = np.format_float_positional(min_lot_size)
+        max_amount = np.format_float_positional(max_amount)
+        final_amount = max_amount[0:len(min_lot_size.split('.')[1]) + len(str(max_amount).split('.')[0]) + 1]
+        return final_amount
     else:
         print('amount less than minimum order!', flush=True)
 
 
-def execute_buy(what_to_buy, what_for, share):
-    ## ПОСТАВИМ ОРДЕР НА ПОКУПКУ
-    try:
-        order_buy = client.create_order(symbol=what_to_buy + what_for,
-                                        side=Client.SIDE_BUY,
-                                        type=Client.ORDER_TYPE_MARKET,
-                                        newOrderRespType='FULL',
-                                        quantity=buy_func(what_to_buy, what_for, share))
-        qty_purched = pd.DataFrame(order_buy['fills'])['qty'].astype(float).sum()
-        price_purched = pd.DataFrame(order_buy['fills'])['price'].astype(float).mean()
+def execute_order(deal_type, position , cur, share, val):
+    q = get_order_amount(deal_type, cur, share, val)
+    if position =='long' and deal_type =='open':
+        s = Client.SIDE_BUY
+    elif position =='long' and deal_type == 'close':
+        s = Client.SIDE_SELL
+    elif position =='short' and deal_type == 'open':
+        s = Client.SIDE_SELL
+    elif position =='short' and deal_type == 'close':
+        s = Client.SIDE_BUY
 
-        print('buy order', '\n', order_buy['symbol'], order_buy['fills'], str(qty_purched*price_purched), flush=True)
-        tg_tmp = telegram_bot_sendtext(telegram_bot_token,
-                                       telegram_bot_chatID,
-                                       'buy order executed :)) ' +\
-                                       str(order_buy['symbol']) + ' '+\
-                                       str(order_buy['fills']) + ' '+\
-                                       str(qty_purched*price_purched))
-        return {'price':price_purched,'qty': qty_purched}
-    except:
-        print('error ... probably not enough money', flush=True)
-        tg_tmp = telegram_bot_sendtext(telegram_bot_token,
-                                       telegram_bot_chatID,
-                                       'ERROR executing buy order!!')
-    finally:
-        print( tg_tmp['result']['chat'], '\n', tg_tmp['ok'],' Telegram message sent!')
-
-
-def sell_func(what_to_sell, what_for, share, val=None):
-    ticker = what_to_sell + what_for
-    balance_atm = client.get_asset_balance(asset=what_to_sell)
-    price_atm = client.get_symbol_ticker(symbol=ticker)
-    ticker_info = client.get_symbol_info(ticker)
-    min_notional = {i['filterType']:i['minNotional'] for i in ticker_info['filters'] if i['filterType']=='MIN_NOTIONAL'}
-
-    max_amount_to_sell = np.format_float_positional(float(balance_atm['free'])*share) if val==None else val
-    min_amount_to_sell = np.format_float_positional(float(min_notional['MIN_NOTIONAL'])/float(price_atm['price']))
-
-    if float(max_amount_to_sell)>float(min_amount_to_sell):
-        min_lot_size = {i['filterType']:i['minQty'] for i in ticker_info['filters'] if i['filterType']=='LOT_SIZE'}
-        min_lot_size = np.format_float_positional(float(min_lot_size['LOT_SIZE']))
-        final_amount_to_sell = str(max_amount_to_sell)[0:len(min_lot_size.split('.')[1]) +
-                                                   len(str(max_amount_to_sell).split('.')[0]) + 1]
-        return final_amount_to_sell
-    else:
-        print('amount less than minimum order!')
-
-
-def execute_sell(what_to_sell, what_for, share, val=None):
-    ## ПОСТАВИМ ОРДЕР НА ПРОДАЖУ
-    try:
-        order_sell = client.create_order(symbol=what_to_sell + what_for,
-                                         side=Client.SIDE_SELL,
-                                         type=Client.ORDER_TYPE_MARKET,
-                                         newOrderRespType='FULL',
-                                         quantity=sell_func(what_to_sell, what_for, share, val))
-        qty_sold = pd.DataFrame(order_sell['fills'])['qty'].astype(float).sum()
-        price_sold = pd.DataFrame(order_sell['fills'])['price'].astype(float).mean()
-
-        print('sell order', '\n', order_sell['symbol'], order_sell['fills'], str(qty_sold*price_sold), flush=True)
-        tg_tmp = telegram_bot_sendtext(telegram_bot_token,
-                                       telegram_bot_chatID,
-                                       'sell order executed :)) ' +\
-                                       str(order_sell['symbol']) + ' '+\
-                                       str(order_sell['fills']) + ' '+\
-                                       str(qty_sold*price_sold))
-    except:
-        print('error ... probably not enough money', flush=True)
-        tg_tmp = telegram_bot_sendtext(telegram_bot_token,
-                                       telegram_bot_chatID,
-                                       'ERROR executing sell order!!')
-    finally:
-        print( tg_tmp['result']['chat'], '\n', tg_tmp['ok'],' Telegram message sent!')
+    ## ПОСТАВИМ ОРДЕР
+    order = client.create_margin_order(symbol=cur + 'USDT',
+                                    side=s,
+                                    type=Client.ORDER_TYPE_MARKET,
+                                    newOrderRespType='FULL',
+                                    quantity=q)
+    qty = pd.DataFrame(order['fills'])['qty'].astype(float).sum()
+    price = pd.DataFrame(order['fills'])['price'].astype(float).mean()
+    print(position, deal_type, 'order executed!', '\n', order['symbol'], order['fills'], str(qty*price), flush=True)
+    telegram_bot_sendtext(telegram_bot_token,
+                                   telegram_bot_chatID,
+                                   position + ' '+ deal_type + ' ' + 'order executed!' + ' ' +\
+                                   str(order['symbol']) + ' '+\
+                                   str(order['fills']) + ' '+\
+                                   str(qty*price))
+    return {'price':price,'qty': qty}
 
 
 def telegram_bot_sendtext(bot_token, bot_chatID ,bot_message):
@@ -149,25 +121,44 @@ def telegram_bot_sendtext(bot_token, bot_chatID ,bot_message):
     return requests.get(send_text).json()
 
 
+def loan_dealer(action_type, cur, share, val):
+    if action_type == 'create':
+        amount = get_order_amount(deal_type='open', cur=cur, share=share, val=val)
+        client.create_margin_loan(asset=cur, amount=amount)
+
+        return execute_order(deal_type='open', position='short', cur=cur, share=share ,val=float(amount))
+
+    elif action_type == 'repay':
+        execute_order(deal_type='close', position='short', cur=cur, share=share, val=val )
+
+        repay_df = pd.DataFrame(client.get_margin_account()['userAssets'])
+        rp_val = str(repay_df.loc[repay_df['asset']==cur]['free'].values[0])
+        client.repay_margin_loan(asset=cur, amount=rp_val)
+
+
+
 ## Объект трекающий тейкпрофиты
 class TakeProfitsTracker():
     def __init__(self, take_profits):
-        
+
         self.tp_dict = take_profits
         self.price_changes = {i:take_profits[i][0] for i in take_profits}
         self.share_to_trade = {i:take_profits[i][1] for i in take_profits}
-        
-        cur_in_action = smart_split(to_trade, mode = 'cia')
-                
-        self.amount_buy = {}
-        self.prices_buy = {}
+
+        cur_in_action = smart_split(mode='cur_in_action')
+
+        self.amount_open = {}
+        self.prices_open = {}
         self.prices_marks = {}
-        
+        self.position_types = {}
+
         for i in cur_in_action['symbol']:
             ## GET LATEST SYMBOL DATA
             newi = i +'USDT'
-            latest_symbol_data = pd.DataFrame(client.get_my_trades(symbol = newi, limit=50)
-                              ).query('isBuyer==True')
+            self.position_types[newi] = cur_in_action[cur_in_action['symbol']==i]['position'].values[0]
+            latest_symbol_data = pd.DataFrame(client.get_margin_trades(symbol = newi, limit=50)
+                                             ).query('isBuyer=={IsLong}'.format(IsLong = self.position_types[newi]=='long'))
+            latest_symbol_data['quoteQty'] = latest_symbol_data['price'].astype(float)*latest_symbol_data['qty'].astype(float)
             latest_symbol_data[['qty','quoteQty','time']] = latest_symbol_data[['qty','quoteQty','time']].apply(pd.to_numeric, errors='coerce')
             latest_symbol_data = latest_symbol_data.groupby(['time','orderId','symbol']
                                                            ).agg({'quoteQty':'sum', 'qty':'sum'}
@@ -176,72 +167,100 @@ class TakeProfitsTracker():
             latest_symbol_data = latest_symbol_data.sort_values(by='time',ascending=False
                                                                ).drop_duplicates(subset='symbol')
 
-            self.amount_buy[newi] = float(latest_symbol_data['qty'])
-            self.prices_buy[newi] = float(latest_symbol_data['price'])
+            self.amount_open[newi] = float(latest_symbol_data['qty'])
+            self.prices_open[newi] = float(latest_symbol_data['price'])
 
-            ## GET THE LIST OF PROFITS TAKEN            
-            share_left = cur_in_action[cur_in_action['symbol']==i]['free'].sum()/self.amount_buy[newi]
+            ## GET THE LIST OF PROFITS TAKEN
+            share_left = abs(cur_in_action[cur_in_action['symbol']==i]['netAsset'].sum())/self.amount_open[newi]
             changing_share_sum = 1
             profits_taken = []
             for j,i in take_profits.items():
                 changing_share_sum-=i[1]
-            
+
                 if changing_share_sum<share_left:
                     break
                 profits_taken+=[j]
 
-            self.prices_marks[newi] = {j:float(latest_symbol_data['price']) * (self.price_changes[j]+1) for j in self.price_changes if j not in profits_taken}
+            self.get_prices_marks(ticker=newi, price_buy=float(latest_symbol_data['price']), profits_taken=profits_taken)
 
-    def cur_purchased_from_signal(self, ticker, price_buy, amount):
-        self.amount_buy[ticker] = amount
-        self.prices_buy[ticker] = price_buy
-        self.prices_marks[ticker] = {i:float(price_buy) * (self.price_changes[i]+1) for i in self.price_changes}
+    def get_prices_marks(self, ticker, price_buy, profits_taken):
+            if self.position_types[ticker] =='long':
+                self.prices_marks[ticker] = {i:price_buy * (self.price_changes[i]+1) for i in self.price_changes if i not in profits_taken}
+            elif self.position_types[ticker] =='short':
+                self.prices_marks[ticker] = {i:price_buy * (1-self.price_changes[i]) for i in self.price_changes if i not in profits_taken}
 
-    def cur_sold_from_signal(self, ticker):
-        del self.amount_buy[ticker]
-        del self.prices_buy[ticker]
+    def position_opened_from_signal(self, position, ticker, price_buy, amount):
+        self.amount_open[ticker] = amount
+        self.prices_open[ticker] = price_buy
+        self.position_types[ticker] = position
+        self.get_prices_marks(ticker=ticker, price_buy=float(price_buy), profits_taken=[])
+
+    def position_closed_from_signal(self, ticker):
+        del self.amount_open[ticker]
+        del self.prices_open[ticker]
+        del self.position_types[ticker]
         del self.prices_marks[ticker]
 
-    def check_prices(self):
+    def check_prices(self, test=None):
         for i in list(self.prices_marks.keys()):
             ## Если в списке тейкпрофитов больше не осталось значений, удаляем валюту из трекера
             if len(self.prices_marks[i])==0:
-                self.cur_sold_from_signal(i)
+                self.position_closed_from_signal(i)
                 continue
 
-            price_atm = client.get_symbol_ticker(symbol=i)['price']
-            tp_signaled = [j for j in self.prices_marks[i] if self.prices_marks[i][j]<=float(price_atm)]
+            ## Проверим сработали ли тейкпрофиты
+            price_atm = test or client.get_symbol_ticker(symbol=i)['price']
+            if self.position_types[i] =='long':
+                tp_signaled = [j for j in self.prices_marks[i] if self.prices_marks[i][j]<=float(price_atm)]
+            elif self.position_types[i] =='short':
+                tp_signaled = [j for j in self.prices_marks[i] if self.prices_marks[i][j]>=float(price_atm)]
+
+            ## Вернем сумму сделки
             if len(tp_signaled)>0:
                 self.prices_marks[i] = {j:self.prices_marks[i][j] for j in self.prices_marks[i] if j not in tp_signaled}
-                signal_share_sell = round(sum([self.share_to_trade[j] for j in tp_signaled]),3)
-                signal_actual_sell = signal_share_sell*self.amount_buy[i]
-                print('TAKE_PRIFIT_SIGNAL', price_atm, i, tp_signaled, signal_share_sell, 'TO_TRADE: ',signal_actual_sell)
-                return {'ticker':i, 'val':signal_actual_sell}
+                signal_share_close = round(sum([self.share_to_trade[j] for j in tp_signaled]),3)
+                signal_val_close = signal_share_close*self.amount_open[i]
+
+                margin_assets = pd.DataFrame(client.get_margin_account()['userAssets'])
+                margin_assets['asset'] = margin_assets['asset']+'USDT'
+
+                if self.position_types[i] =='long':
+                    signal_actual_close = signal_val_close/float(margin_assets[margin_assets['asset']==i]['free'].values[0])
+                elif self.position_types[i] =='short':
+                    signal_actual_close = signal_val_close/float(margin_assets[margin_assets['asset']==i]['borrowed'].values[0])
+
+                print('TAKE_PRIFIT_SIGNAL', price_atm, i, tp_signaled, signal_share_close, 'TO_TRADE: ',signal_actual_close)
+                return {'ticker':i, 'val':signal_actual_close, 'position_type':self.position_types[i]}
                 break
-        print ( 'prices:',self.prices_buy, '\namount:',self.amount_buy, '\nTP_marks:', self.prices_marks)
+
+        print ('prices:',self.prices_open,
+               '\namount:',self.amount_open,
+               '\nTP_marks:', self.prices_marks,
+               '\nposition_types', self.position_types)
+
 
 
 
 take_profit_tracker = TakeProfitsTracker(take_profits)
-#connector = imaplib.IMAP4_SSL(mail_host)
-#connector.login(mail_login, mail_pass)
-
-
+connector = imaplib.IMAP4_SSL(mail_host)
+connector.login(mail_login, mail_pass)
 
 ## ОСНОВНОЙ ЦИКЛ
 while True:
-    time.sleep(30)
+    time.sleep(60)
     ## ПРОВЕРЯЕМ ТЕЙКПРОФИТЫ
     res = take_profit_tracker.check_prices()
     if res!=None:
-        execute_sell(what_to_sell=res['ticker'].replace('USDT',''), what_for='USDT', share=1, val =res['val'])
+        share_trade_tmp = round(res['val'],3) if res['val']<=1 else 1
+        if res['position_type']=='long':
+            execute_order(deal_type='close', position='long' , cur=res['ticker'].replace('USDT',''), share=share_trade_tmp, val=None)
+        elif res['position_type']=='short':
+            loan_dealer(action_type='repay', cur=res['ticker'].replace('USDT',''), share=share_trade_tmp, val=None)
 
 
 
 
     ## ПРОВЕРЯМ ПОЧТУ
-    connector = imaplib.IMAP4_SSL(mail_host)
-    connector.login(mail_login, mail_pass)
     connector.select("TradingView_Alerts")
     resp, items = connector.search(None, "ALL")
 
@@ -256,30 +275,45 @@ while True:
                                    'Mail Recieved: '+mail['Subject'] + ' ' + mail['Date'])
         if 'Buy' in mail['Subject']:
             currency = mail['Subject'].split('_')[2]
-            tmp = execute_buy(what_to_buy=currency, what_for='USDT', share=1)
             try:
-                take_profit_tracker.cur_purchased_from_signal(currency+'USDT', tmp['price'], tmp['qty'])
+                loan_dealer(action_type='repay', cur=currency, share=1, val=None)
+                take_profit_tracker.position_closed_from_signal(currency+'USDT')
             except:
-                print('Tracker_ERROR: price_and_amount_not_passed')
+                text = 'ERROR closing short'
+                print(text, flush=True)
+                telegram_bot_sendtext(telegram_bot_token, telegram_bot_chatID, text)
 
+            try:
+                tmp = execute_order(deal_type='open', position='long' , cur=currency, share=1, val=None)
+                take_profit_tracker.position_opened_from_signal(position='long', ticker=currency+'USDT', price_buy=tmp['price'], amount=tmp['qty'])
+            except:
+                text = 'ERROR: opening long'
+                print(text, flush=True)
+                telegram_bot_sendtext(telegram_bot_token, telegram_bot_chatID, text)
         elif 'Sell' in mail['Subject']:
             currency = mail['Subject'].split('_')[2]
-            execute_sell(what_to_sell=currency, what_for='USDT', share=1)
             try:
-                take_profit_tracker.cur_sold_from_signal(currency+'USDT')
+                execute_order(deal_type='close', position='long' , cur=currency, share=1, val=None)
+                take_profit_tracker.position_closed_from_signal(currency+'USDT') ## изменить!
             except:
-                print('Tracker_ERROR: currency_doesnt_exist')
-
+                text = 'ERROR: closing long'
+                print(text, flush=True)
+                telegram_bot_sendtext(telegram_bot_token, telegram_bot_chatID, text)
+            try:
+                tmp = loan_dealer(action_type='create', cur=currency, share=1, val=None)
+                take_profit_tracker.position_opened_from_signal(position='short', ticker=currency+'USDT', price_buy=tmp['price'], amount=tmp['qty'])
+            except:
+                text = 'ERROR: opening long'
+                print(text, flush=True)
+                telegram_bot_sendtext(telegram_bot_token, telegram_bot_chatID, text)
         else:
             print('Unknown email', flush=True)
         print('Deleting email', flush=True)
         connector.store(emailid, '+X-GM-LABELS', '\\Trash')
     connector.expunge()
     print('done ', dt.datetime.now(), flush=True)
-
     connector.close()
-    connector.logout()
 
 
-#connector.close()
-#connector.logout()
+
+connector.logout()
