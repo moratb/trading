@@ -240,10 +240,9 @@ class TakeProfitsTracker():
 
 
 
-
 take_profit_tracker = TakeProfitsTracker(take_profits)
-connector = imaplib.IMAP4_SSL(mail_host)
-connector.login(mail_login, mail_pass)
+#connector = imaplib.IMAP4_SSL(mail_host)
+#connector.login(mail_login, mail_pass)
 
 ## ОСНОВНОЙ ЦИКЛ
 while True:
@@ -261,6 +260,8 @@ while True:
 
 
     ## ПРОВЕРЯМ ПОЧТУ
+    connector = imaplib.IMAP4_SSL(mail_host)
+    connector.login(mail_login, mail_pass)
     connector.select("TradingView_Alerts")
     resp, items = connector.search(None, "ALL")
 
@@ -312,8 +313,11 @@ while True:
         connector.store(emailid, '+X-GM-LABELS', '\\Trash')
     connector.expunge()
     print('done ', dt.datetime.now(), flush=True)
+
     connector.close()
+    connector.logout()
 
 
 
-connector.logout()
+#connector.close()
+#connector.logout()
