@@ -29,7 +29,7 @@ client = Client(api_key, api_secret)
 
 
 
-def smart_split(cur='BTC' ,mode = 'use_next_deal'):
+def smart_split(cur=None ,mode = 'use_next_deal'):
     balances_full = pd.DataFrame(client.get_margin_account()['userAssets']).rename(columns={'asset':'symbol'})
     balances_full['netAsset'] = balances_full['netAsset'].astype(float)
     prices = pd.DataFrame(client.get_symbol_ticker())
@@ -88,14 +88,12 @@ def get_order_amount(deal_type , cur, share, val):
 
 def execute_order(deal_type, position , cur, share, val):
     q = get_order_amount(deal_type, cur, share, val)
-    if position =='long' and deal_type =='open':
-        s = Client.SIDE_BUY
-    elif position =='long' and deal_type == 'close':
-        s = Client.SIDE_SELL
-    elif position =='short' and deal_type == 'open':
-        s = Client.SIDE_SELL
-    elif position =='short' and deal_type == 'close':
-        s = Client.SIDE_BUY
+    side_dict = {
+    ('long','open'):Client.SIDE_BUY,
+    ('long','close'):Client.SIDE_SELL,
+    ('short','open'):Client.SIDE_SELL,
+    ('short','close'):Client.SIDE_BUY}
+    s = side_dict[(position,deal_type)]
 
     ## ПОСТАВИМ ОРДЕР
     order = client.create_margin_order(symbol=cur + 'USDT',
@@ -237,6 +235,7 @@ class TakeProfitsTracker():
                '\namount:',self.amount_open,
                '\nTP_marks:', self.prices_marks,
                '\nposition_types', self.position_types)
+
 
 
 
