@@ -32,6 +32,7 @@ client = Client(api_key, api_secret)
 def smart_split(cur=None ,mode = 'use_next_deal'):
     balances_full = pd.DataFrame(client.get_margin_account()['userAssets']).rename(columns={'asset':'symbol'})
     balances_full['netAsset'] = balances_full['netAsset'].astype(float)
+    balances_full['interest'] = balances_full['interest'].astype(float)
     prices = pd.DataFrame(client.get_symbol_ticker())
     prices['symbol'] = prices['symbol'].str.replace('USDT','')
     balances_actual = balances_full[balances_full['netAsset']!=0]
@@ -144,6 +145,7 @@ class TakeProfitsTracker():
         self.share_to_trade = {i:take_profits[i][1] for i in take_profits}
 
         cur_in_action = smart_split(mode='cur_in_action')
+        cur_in_action['netAssetLeft'] = cur_in_action['netAsset']+cur_in_action['interest']
 
         self.amount_open = {}
         self.prices_open = {}
@@ -169,7 +171,7 @@ class TakeProfitsTracker():
             self.prices_open[newi] = float(latest_symbol_data['price'])
 
             ## GET THE LIST OF PROFITS TAKEN
-            share_left = abs(cur_in_action[cur_in_action['symbol']==i]['netAsset'].sum())/self.amount_open[newi]
+            share_left = abs(cur_in_action[cur_in_action['symbol']==i]['netAssetLeft'].sum())/self.amount_open[newi]
             changing_share_sum = 1
             profits_taken = []
             for j,i in take_profits.items():
