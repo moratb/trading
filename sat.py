@@ -46,8 +46,11 @@ def smart_split(cur=None ,mode = 'use_next_deal'):
     cur_in_action = balances_actual[(balances_actual['in_action']) & (balances_actual['symbol']!='USDT')]
 
     cur_left = (TO_TRADE - len(cur_in_action))
-    use_next_deal = balances_actual[(balances_actual['usd_true']<0) | (balances_actual['symbol']=='USDT')]['usd_true'].sum()-100
-    use_next_deal = use_next_deal/cur_left if (cur_left and cur not in list(cur_in_action['symbol'])) else 0
+#    use_next_deal = balances_actual[(balances_actual['usd_true']<0) | (balances_actual['symbol']=='USDT')]['usd_true'].sum()-100
+#    use_next_deal = use_next_deal/cur_left if (cur_left and cur not in list(cur_in_action['symbol'])) else 0
+
+    use_next_deal = balances_actual['usd'].sum()-100
+    use_next_deal = use_next_deal/4 if (cur_left and cur not in list(cur_in_action['symbol'])) else 0
 
     if mode =='use_next_deal':
         return use_next_deal
@@ -128,11 +131,28 @@ def loan_dealer(action_type, cur, share, val):
         return execute_order(deal_type='open', position='short', cur=cur, share=share ,val=float(amount))
 
     elif action_type == 'repay':
-        execute_order(deal_type='close', position='short', cur=cur, share=share, val=val )
-
+        
+        ##Error check1
         repay_df = pd.DataFrame(client.get_margin_account()['userAssets'])
+        repay_df['netAsset'] = repay_df['netAsset'].astype(float)
+        print(repay_df[repay_df['netAsset']!=0])
+        
+        
+        execute_order(deal_type='close', position='short', cur=cur, share=share, val=val )
+        time.sleep(10)
+        
+        ##Error check2      
+        repay_df = pd.DataFrame(client.get_margin_account()['userAssets'])
+        repay_df['netAsset'] = repay_df['netAsset'].astype(float)
+        print(repay_df[repay_df['netAsset']!=0])
+
         rp_val = str(repay_df.loc[repay_df['asset']==cur]['free'].values[0])
         client.repay_margin_loan(asset=cur, amount=rp_val)
+        
+        ##Error check3      
+        repay_df = pd.DataFrame(client.get_margin_account()['userAssets'])
+        repay_df['netAsset'] = repay_df['netAsset'].astype(float)
+        print(repay_df[repay_df['netAsset']!=0])
 
 
 
@@ -171,7 +191,7 @@ class TakeProfitsTracker():
             self.prices_open[newi] = float(latest_symbol_data['price'])
 
             ## GET THE LIST OF PROFITS TAKEN
-            share_left = abs(cur_in_action[cur_in_action['symbol']==i]['netAssetLeft'].sum())/self.amount_open[newi]
+            share_left = round((abs(cur_in_action[cur_in_action['symbol']==i]['netAssetLeft'].sum())/self.amount_open[newi])*10)/10
             changing_share_sum = 1
             profits_taken = []
             for j,i in take_profits.items():
